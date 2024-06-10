@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Literal
 
 import torch
 import torch.nn as nn
@@ -48,7 +48,7 @@ class Preprocessor(nn.Module):
             self.hcqt_sr = sampling_rate
             self._reset_hcqt_kernels()
 
-    def forward(self, x: torch.Tensor, sr: Optional[int] = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, sr: Optional[int] = None, mode: Literal['linear','log']='log') -> torch.Tensor:
         r"""
 
         Args:
@@ -66,7 +66,12 @@ class Preprocessor(nn.Module):
         complex_cqt.squeeze_(0)
 
         # convert to dB
-        return self.to_log(complex_cqt)
+        if mode == 'log':
+            return self.to_log(complex_cqt)
+        elif mode =='linear':
+            return complex_cqt.abs()
+        elif mode == 'complex':
+            return complex_cqt
 
     def hcqt(self, audio: torch.Tensor, sr: Optional[int] = None) -> torch.Tensor:
         r"""Compute the Harmonic CQT of the input audio after eventually recreating the kernels

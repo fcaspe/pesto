@@ -132,7 +132,7 @@ class Resnet1d(nn.Module):
 
         self.final_norm = nn.Softmax(dim=-1)
 
-    def forward(self, x):
+    def forward(self, x, return_preactivations:bool=False):
         r"""
 
         Args:
@@ -150,11 +150,14 @@ class Resnet1d(nn.Module):
                 x = prefilt_layer(x)
 
         x = self.conv_layers(x)
+
         x = self.flatten(x)
 
         y_pred = self.fc(x)
-
-        return self.final_norm(y_pred)
+        if return_preactivations:
+            return y_pred
+        else:
+            return self.final_norm(y_pred)
 
 
 class PESTO(nn.Module):
@@ -181,8 +184,9 @@ class PESTO(nn.Module):
                 audio_waveforms: torch.Tensor,
                 sr: Optional[int] = None,
                 convert_to_freq: bool = False,
-                return_activations: bool = False) -> OUTPUT_TYPE:
-        r"""
+                return_activations: bool = False,
+                return_preactivations: bool = False) -> OUTPUT_TYPE:
+        """
 
         Args:
             audio_waveforms (torch.Tensor): mono audio waveform or batch of mono audio waveforms,
@@ -200,8 +204,10 @@ class PESTO(nn.Module):
         """
         batch_size = audio_waveforms.size(0) if audio_waveforms.ndim == 2 else None
         x = self.preprocessor(audio_waveforms, sr=sr)
+        #print(f'preprocessor output: {x.shape}')
         x = self.crop_cqt(x)  # the CQT has to be cropped beforehand
-
+        print(f'crop cqt output: {x.shape}')
+        
         # for now, confidence is computed very naively just based on energy in the CQT
         confidence = x.mean(dim=-2).max(dim=-1).values
         conf_min, conf_max = confidence.min(dim=-1, keepdim=True).values, confidence.max(dim=-1, keepdim=True).values
@@ -211,7 +217,9 @@ class PESTO(nn.Module):
         if batch_size:
             x = x.flatten(0, 1)
 
-        activations = self.encoder(x)
+        # If return_preactivations is true, then the output are the preactivations, and not the activations
+        activations = self.encoder(x,return_preactivations=return_preactivations)
+        #print(f'activations encoder: {activations.shape}')
         if batch_size:
             activations = activations.view(batch_size, -1, activations.size(-1))
 
@@ -222,10 +230,52 @@ class PESTO(nn.Module):
         if convert_to_freq:
             preds = 440 * 2 ** ((preds - 69) / 12)
 
-        if return_activations:
+        if return_preactivations:
+            return activations
+        
+        elif return_activations:
             return preds, confidence, activations
+        
+        else:
+            return preds, confidence
 
-        return preds, confidence
+    def process_cqt(self,
+                cqt: torch.Tensor,
+                convert_to_freq: bool = False,
+                return_activations: bool = False,
+                return_preactivations: bool = False) -> OUTPUT_TYPE:
+
+        batch_size = cqt.size(0) if cqt.ndim == 3 else None
+        #print(f'crop cqt output: {cqt.shape}')
+        x = cqt
+        
+        # for now, confidence is computed very naively just based on energy in the CQT
+        confidence = x.mean(dim=-2).max(dim=-1).values
+        conf_min, conf_max = confidence.min(dim=-1, keepdim=True).values, confidence.max(dim=-1, keepdim=True).values
+        confidence = (confidence - conf_min) / (conf_max - conf_min)
+
+        # If return_preactivations is true, then the output are the preactivations, and not the activations
+        activations = self.encoder(x,return_preactivations=return_preactivations)
+        #print(f'activations encoder: {activations.shape}')
+        if batch_size:
+            activations = activations.view(batch_size, -1, activations.size(-1))
+
+        activations = activations.roll(-round(self.shift.cpu().item() * self.bins_per_semitone), -1)
+
+        preds = reduce_activations(activations, reduction=self.reduction)
+
+        if convert_to_freq:
+            preds = 440 * 2 ** ((preds - 69) / 12)
+
+        if return_preactivations:
+            return activations
+        
+        elif return_activations:
+            return preds, confidence, activations
+        
+        else:
+            return preds, confidence
+
 
     @property
     def bins_per_semitone(self) -> int:

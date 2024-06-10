@@ -94,6 +94,7 @@ def create_cqt_kernels(
     """
     Automatically create CQT kernels in time domain
     """
+    #print(f'bins per octave {bins_per_octave}')
     if (fmax is not None) and (n_bins is None):
         n_bins = np.ceil(
             bins_per_octave * np.log2(fmax / fmin)
@@ -273,7 +274,7 @@ class CQT(nn.Module):
         cqt_kernels, self.kernel_width, lenghts, freqs = create_cqt_kernels(
             Q, sr, fmin, n_bins, bins_per_octave, norm, window, fmax
         )
-
+        #print(f'freqs: {len(freqs)}: {freqs}')
         self.register_buffer("lenghts", lenghts)
         self.frequencies = freqs
 
@@ -370,7 +371,10 @@ class HarmonicCQT(nn.Module):
             center_bins: bool = True
     ):
         super(HarmonicCQT, self).__init__()
-
+        #print(f'harmonics: {harmonics}')
+        #print(f'fmin: {fmin}')
+        #print(f'fmax: {fmax}')
+        #print(f'n_bins: {n_bins}')
         if center_bins:
             fmin = fmin / 2 ** ((bins_per_semitone - 1) / (24 * bins_per_semitone))
 
